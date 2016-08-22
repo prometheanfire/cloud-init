@@ -137,12 +137,71 @@ NETWORK_DATA_3 = {
     ]
 }
 
+NETWORK_DATA_BOND = {
+    "services": [
+        {"type": "dns", "address": "1.1.1.191"},
+        {"type": "dns", "address": "1.1.1.4"},
+    ],
+    "networks": [
+        {"id": "network2-ipv4", "ip_address": "2.2.2.13",
+         "link": "vlan2", "netmask": "255.255.255.248",
+         "network_id": "4daf5ce8-38cf-4240-9f1a-04e86d7c6117",
+         "type": "ipv4",
+         "routes": [{"netmask": "0.0.0.0", "network": "0.0.0.0",
+                    "gateway": "2.2.2.9"}]},
+        {"id": "network3-ipv4", "ip_address": "10.0.1.5",
+         "link": "vlan3", "netmask": "255.255.255.248",
+         "network_id": "a9e2f47c-3c43-4782-94d0-e1eeef1c8c9d",
+         "type": "ipv4",
+         "routes": [{"netmask": "255.255.255.255",
+                    "network": "192.168.1.0", "gateway": "10.0.1.1"}]}
+    ],
+    "links": [
+        {"ethernet_mac_address": "0c:c4:7a:34:6e:3c",
+         "id": "eth0", "mtu": 1500, "type": "phy"},
+        {"ethernet_mac_address": "0c:c4:7a:34:6e:3d",
+         "id": "eth1", "mtu": 1500, "type": "phy"},
+        {"bond_links": ["eth0", "eth1"],
+         "bond_miimon": 100, "bond_mode": "4",
+         "bond_xmit_hash_policy": "layer3+4",
+         "ethernet_mac_address": "0c:c4:7a:34:6e:3c",
+         "id": "bond0", "type": "bond"},
+        {"ethernet_mac_address": "fa:16:3e:b3:72:30",
+         "id": "vlan2", "type": "vlan", "vlan_id": 602,
+         "vlan_link": "bond0", "vlan_mac_address": "fa:16:3e:b3:72:30"},
+        {"ethernet_mac_address": "fa:16:3e:66:ab:a6",
+         "id": "vlan3", "type": "vlan", "vlan_id": 612, "vlan_link": "bond0",
+         "vlan_mac_address": "fa:16:3e:66:ab:a6"}
+    ]
+}
+
+NETWORK_DATA_VLAN = {
+    "services": [{"type": "dns", "address": "1.1.1.191"}],
+    "networks": [
+        {"id": "network1-ipv4", "ip_address": "10.0.1.5",
+         "link": "vlan1", "netmask": "255.255.255.248",
+         "network_id": "a9e2f47c-3c43-4782-94d0-e1eeef1c8c9d",
+         "type": "ipv4",
+         "routes": [{"netmask": "255.255.255.255",
+                    "network": "192.168.1.0", "gateway": "10.0.1.1"}]}
+    ],
+    "links": [
+        {"ethernet_mac_address": "fa:16:3e:69:b0:58",
+         "id": "eth0", "mtu": 1500, "type": "phy"},
+        {"ethernet_mac_address": "fa:16:3e:b3:72:30",
+         "id": "vlan1", "type": "vlan", "vlan_id": 602,
+         "vlan_link": "eth0", "vlan_mac_address": "fa:16:3e:b3:72:30"},
+    ]
+}
+
 KNOWN_MACS = {
     'fa:16:3e:69:b0:58': 'enp0s1',
     'fa:16:3e:d4:57:ad': 'enp0s2',
     'fa:16:3e:dd:50:9a': 'foo1',
     'fa:16:3e:a8:14:69': 'foo2',
     'fa:16:3e:ed:9a:59': 'foo3',
+    '0c:c4:7a:34:6e:3d': 'oeth1',
+    '0c:c4:7a:34:6e:3c': 'oeth0',
 }
 
 CFG_DRIVE_FILES_V2 = {
@@ -598,6 +657,47 @@ class TestConvertNetworkData(TestCase):
             if i.get('type') == "physical":
                 physicals.add(i['name'])
         self.assertEqual(physicals, set(('foo1', 'foo2')))
+
+    def test_bond_conversion(self):
+        ncfg = openstack.convert_net_json(NETWORK_DATA_BOND,
+                                          known_macs=KNOWN_MACS)
+        print("==== start netconfig ===")
+        print("%s\n" %
+              json.dumps(ncfg, indent=1, sort_keys=True,
+                         separators=(',', ': ')))
+        print("==== end netconfig ===")
+        eni_renderer = eni.Renderer()
+        eni_renderer.render_network_state(
+            self.tmp, network_state.parse_net_config_data(ncfg))
+        with open(os.path.join(self.tmp, "etc",
+                               "network", "interfaces"), 'r') as f:
+            eni_rendering = f.read()
+        print("eni_rendering=%s" % eni_rendering)
+        # FIXME: rendered eni ends up with 'eth0' and 'eth1' references
+        # (auto eth0) where it should have oeth0 and oeth1.
+        raise Exception("FOO_BOND")
+
+    def test_vlan(self):
+        ncfg = openstack.convert_net_json(NETWORK_DATA_VLAN,
+                                          known_macs=KNOWN_MACS)
+        print("==== vlan network_data.json ====")
+        print("%s\n" %
+              json.dumps(NETWORK_DATA_VLAN, indent=1, sort_keys=True,
+                         separators=(',', ': ')))
+        print()
+        print("==== start netconfig ===")
+        print("%s\n" %
+              json.dumps(ncfg, indent=1, sort_keys=True,
+                         separators=(',', ': ')))
+        print("==== end netconfig ===")
+        eni_renderer = eni.Renderer()
+        eni_renderer.render_network_state(
+            self.tmp, network_state.parse_net_config_data(ncfg))
+        with open(os.path.join(self.tmp, "etc",
+                               "network", "interfaces"), 'r') as f:
+            eni_rendering = f.read()
+        print("=== eni rendered ===\n%s\n" % eni_rendering)
+        raise Exception("FOO_VLAN")
 
 
 def cfg_ds_from_dir(seed_d):
