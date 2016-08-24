@@ -21,6 +21,8 @@
 from cloudinit import distros
 from cloudinit import helpers
 from cloudinit import log as logging
+# from cloudinit.net.network_state import parse_net_config_data
+from cloudinit.net import netifrc
 from cloudinit import util
 
 from cloudinit.distros import net_util
@@ -45,6 +47,7 @@ class Distro(distros.Distro):
         # should only happen say once per instance...)
         self._runner = helpers.Runners(paths)
         self.osfamily = 'gentoo'
+        self._net_renderer = netifrc.Renderer()
         # Fix sshd restarts
         cfg['ssh_svcname'] = '/etc/init.d/sshd'
 
@@ -119,6 +122,11 @@ class Distro(distros.Distro):
                             convert_resolv_conf(nameservers))
 
         return dev_names
+
+    def _write_network_config(self, netconfig):
+        # ns = parse_net_config_data(netconfig)
+        self._net_renderer.render_network_state("/", netconfig['config'])
+        return []
 
     @staticmethod
     def _create_network_symlink(interface_name):

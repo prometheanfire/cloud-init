@@ -1,6 +1,7 @@
 from cloudinit import net
 from cloudinit.net import cmdline
 from cloudinit.net import eni
+from cloudinit.net import netifrc
 from cloudinit.net import network_state
 from cloudinit.net import sysconfig
 from cloudinit.sources.helpers import openstack
@@ -679,6 +680,51 @@ class TestEniRoundTrip(TestCase):
         self.assertEqual(
             entry['expected_eni'].splitlines(),
             files['/etc/network/interfaces'].splitlines())
+
+
+class TestNetifrc(TestCase):
+    def setUp(self):
+        super(TestCase, self).setUp()
+        self.tmp_dir = tempfile.mkdtemp()
+        os.makedirs(os.path.join(self.tmp_dir, 'etc/init.d'))
+        self.addCleanup(shutil.rmtree, self.tmp_dir)
+
+    def _render_and_read(self, network_config=None):
+        ns = network_state.parse_net_config_data(network_config)
+        renderer = netifrc.Renderer()
+        renderer.render_network_state(self.tmp_dir, ns)
+        return dir2dict(self.tmp_dir)
+
+    def testsimple_convert_and_render(self):
+        network_config = eni.convert_eni_data(EXAMPLE_ENI)
+        files = self._render_and_read(network_config=network_config)
+
+        # files now is a dictionary of files under tmpdir
+        # (dir2dict does not support symlinks... fixes welcome)
+        # so just go through and look at the files that they are what
+        # you think.
+
+        # the Eni test case above has static expected results for
+        # some files, or you can do whatever you want.
+        self.assertEqual(
+            RENDERED_ENI.splitlines(),
+            files['/etc/conf.d/net.eth0'].splitlines())
+
+    def testsimple_render_all(self):
+
+        entry = NETWORK_CONFIGS['all']
+        files = self._render_and_read(network_config=yaml.load(entry['yaml']))
+
+        # check this looks as expected
+        print("files look like: %s" % files)
+        self.assertTrue(1 == 0)
+
+    def testsimple_render_small(self):
+        entry = NETWORK_CONFIGS['small']
+
+        # check this looks as expected
+        # print("files look like: %s" % files)
+        # self.assertTrue(1 == 0)
 
 
 def _gzip_data(data):
